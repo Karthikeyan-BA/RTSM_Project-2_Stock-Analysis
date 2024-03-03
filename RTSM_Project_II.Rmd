@@ -1,0 +1,402 @@
+---
+title: "RTSM_Project_2"
+author: "Karthikeyan A"
+date: "2024-03-03"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you
+execute code within the notebook, the results appear beneath the code.
+
+Try executing this chunk by clicking the *Run* button within the chunk
+or by placing your cursor inside it and pressing *Cmd+Shift+Enter*.
+
+RTSM Project on Time Series Data. Name: Karthikeyan A Roll No: 14A
+
+Stock Considered : Somany Ceramics (herein after referred as "Stock") on
+daily basis from 2017-04-01 to 2022-03-31.
+
+```{r}
+# # Required Packages
+packages = c('quantmod','car','forecast','tseries','FinTS', 'rugarch','utf8','ggplot2')
+# 
+# # Install all Packages with Dependencies
+# install.packages(packages, dependencies = TRUE)
+# 
+# # Load all Packages
+lapply(packages, require, character.only = TRUE)
+
+##
+# 0.1. Fetch Single Stock/Index Data
+getSymbols(Symbols = 'SOMANYCERA.NS', 
+           src = 'yahoo', 
+           from = as.Date('2017-04-01'), 
+           to = as.Date('2022-03-31'),
+           periodicity = 'daily')
+
+stock_price = na.omit(SOMANYCERA.NS$SOMANYCERA.NS.Adjusted) # Adjusted Closing Price
+class(stock_price) # xts (Time-Series) Object
+
+plot(stock_price)
+stock_ret = na.omit(diff(log(stock_price))) # Stock Returns
+plot(stock_ret)
+```
+
+To analyze the daily returns of Somany Ceramics stock from 2017-04-01 to
+2022-03-31. Extracted the adjusted closing prices of Somany Ceramics
+stock, performed ADF Test. Also, stock returns calculated using log
+returns method. Performed ADF test on Stock_ret too.
+
+```{r}
+# Augmented Dickey-Fuller (ADF) Test for Stationarity with Stock Data
+
+adf_test_stk_price = adf.test(stock_price); adf_test_stk_price  # Inference : Stock price Time-Series is Non-Stationary
+
+adf_test_stk_ret = adf.test(stock_ret); adf_test_stk_ret # Inference : Stock Difference Time-Series is Stationary
+```
+
+**Objective**: To conduct an Augmented Dickey-Fuller (ADF) test for
+stationarity on the daily returns of stock and Stock Price.
+
+**Analysis**: Performed the ADF test using the 'adf.test' function and
+obtained results.
+
+**Result:** The Augmented Dickey-Fuller test for stationarity on stock
+price yields the following results: - Dickey-Fuller = -0.78302, Lag
+order = 10, p-value = 0.9631 alternative hypothesis: stationary
+
+The Augmented Dickey-Fuller test for stationarity on stock returns
+yields the following results: - Dickey-Fuller = -9.6895, Lag order = 10,
+p-value = 0.01 alternative hypothesis: stationary
+
+**Implication:** The ADF test suggests that the stock returns are likely
+stationary. The small p-value (0.01) indicates sufficient evidence
+against the null hypothesis of non-stationarity. Therefore, we have
+reason to believe that the stock returns exhibit stationarity while
+stock price doesn't, which is important for certain time series
+analyses.
+
+```{r}
+# Ljung-Box Test for Autocorrelation - Stock Data (H0: No Autocorrelation)
+# *********************************************** 
+
+lb_test_stk_ret = Box.test(stock_ret); lb_test_stk_ret # Inference : Stock Difference (Stationary) Time-Series is Autocorrelated
+
+# Autocorrelation Function (ACF) | Partial Autocorrelation Function (PACF)
+# *****************************************************************************
+
+acf(stock_price) # ACF of Stock Price
+pacf(stock_price) # PACF of Stock Price
+
+acf(stock_ret) # ACF of Stock Return (Stationary) Series
+pacf(stock_ret) # PACF of Stock Return (Stationary) Series
+```
+
+**Objective:** To perform a Ljung-Box test for autocorrelation on the
+stock returns.
+
+**Analysis:** Conducted the Ljung-Box test using the 'Box.test' function
+and obtained results.
+
+**Result:** The Ljung-Box test for autocorrelation on stock returns
+yields the following results: X-squared = 15.771, df = 1, p-value =
+7.148e-05
+
+**Implication:** The Ljung-Box test indicates significant
+autocorrelation in the stock returns. The small p-value (\< 7.148e-05)
+suggests evidence against the null hypothesis of no autocorrelation.
+
+Action Step: Given the presence of autocorrelation, it may be advisable
+to consider an autoARIMA model for time series forecasting. AutoARIMA
+can help in automatically selecting an appropriate ARIMA model with
+differencing to account for the observed autocorrelation.
+
+```{r}
+# Auto ARIMA on Stock Return
+arma_pq_stk_ret = auto.arima(stock_ret); arma_pq_stk_ret
+
+# Auto ARIMA on Stock Price
+arma_pq_stk = auto.arima(stock_price); arma_pq_stk
+```
+
+**Objective:** To perform autoARIMA modeling on the stock returns and
+stock price
+
+**Analysis:** Used the 'auto.arima' function to automatically select the
+ARIMA model for both returns and prices.
+
+**Results:** For stock returns ('stock_ret'): The autoARIMA model
+suggests an ARIMA(1,1,5) with non zero mean. Coefficients: - AR: ar1 -
+MA: ma1 to ma5 - sigma\^2 = 0.0007901: log likelihood = 2653.49
+AIC=-5292.98 AICc=-5292.89 BIC=-5257.17
+
+For Adjusted Closing Prices ('stock_price'): The autoARIMA model
+suggests an ARIMA(2,1,2) with a non-zero mean. Coefficients: - AR: ar1
+to ar2 - MA: ma1 to ma2 - Mean: mean term - sigma\^2 = 136.4: log
+likelihood = -4778.26 AIC=9566.52 AICc=9566.57 BIC=9592.11
+
+y(t)=c+(−0.4205)∗y(t−1)−(−0.4677)∗e(t−1)−(−0.3902)∗e(t−2)−(−0.1162)∗e(t−3)−(−0.0908)∗e(t−4)+0.0878∗e(t−5)+e(t)
+
+**Implication:** The autoARIMA models provide a statistical framework to
+capture the underlying patterns in both stock returns and stock price.
+These models can be used for forecasting future values, and the AIC,
+AICc, and BIC values help in model comparison.
+
+Note: The log likelihood is positive, indicating a good fit of the model
+to the data. The information criteria (AIC, AICc, BIC) are relatively
+low, suggesting a good balance between model fit and complexity.
+
+```{r}
+# Ljung-Box Test for Autocorrelation - Model Residuals(H0: No Autocorrelation)
+# ****************************************************
+lb_test_arma_pq_stk_ret = Box.test(arma_pq_stk_ret$residuals); lb_test_arma_pq_stk_ret
+
+```
+
+**Objective:** To perform a Ljung-Box test for autocorrelation on the
+arima residuals.
+
+**Analysis:** Conducted the Ljung-Box test using the 'Box.test' function
+and obtained results.
+
+**Result:** The Ljung-Box test for autocorrelation on arima residual
+yields the following results: X-squared = 0.0047404, df = 1, p-value =
+0.9451
+
+It indicates no significant autocorrelation in the residuals of the
+ARIMA(1, 1, 5) model residual. The high p-value (0.9451) suggests that
+there is no evidence against the null hypothesis of no autocorrelation.
+
+```{r}
+# Forecasting with ARIMA Models
+# ************************************
+# jj_ds_f11 = predict(arma11, n.ahead = 40)
+# plot(jj_ds_f11)
+# lines(jj_ds_f11$pred, col = 'blue')
+# lines(jj_ds_f11$pred + 2 * jj_ds_f11$se, col = 'red')
+# lines(jj_ds_f11$pred - 2 * jj_ds_f11$se, col = 'red')
+
+stock_ret_fpq = forecast(arma_pq_stk_ret, h = 40)
+plot(stock_ret_fpq)
+
+stock_fpq = forecast(arma_pq_stk, h = 40)
+plot(stock_fpq)
+```
+
+**Objective:** To fit an ARIMA(1, 1, 5) model to the stock returns &
+price and generate forecasts. Analysis: Used the 'arima' function to fit
+the ARIMA model and the 'forecast' function to generate forecasts.
+
+**Results:** ARIMA Model (1, 1, 5): Coefficients: - AR: ar1 - MA: ma1 to
+ma2 - Intercept term - sigma\^2 = 0.0007901: log likelihood = 2653.49
+AIC=-5292.98 AICc=-5292.89 BIC=-5257.17
+
+y(t)=c+(−0.4205)∗y(t−1)−(−0.4677)∗e(t−1)−(−0.3902)∗e(t−2)−(−0.1162)∗e(t−3)−(−0.0908)∗e(t−4)+0.0878∗e(t−5)+e(t)
+
+**Plot:** The plot displays the original time series of stock returns
+along with the forecast values.
+
+**Implication:** The ARIMA(1, 1, 5) model is fitted to the historical
+stock returns, providing insights into the underlying patterns. The
+generated forecast can be used for future predictions, and the plot
+visually represents the model's performance.
+
+```{r}
+# Test for Volatility Clustering or Heteroskedasticity: Box Test 
+stk_ret_sq = arma_pq_stk_ret$residuals^2 # Return Variance (Since Mean Returns is approx. 0)
+plot(stk_ret_sq)
+stk_ret_sq_box_test = Box.test(stk_ret_sq, lag = 10) # H0: Return Variance Series is Not Serially Correlated
+stk_ret_sq_box_test # Inference : Return Variance Series is Heteroskedastic (Has Volatility Clustering)
+
+# Test for Volatility Clustering or Heteroskedasticity: ARCH Test
+stk_ret_arch_test = ArchTest(arma_pq_stk_ret$residuals^2, lags = 10) # H0: No ARCH Effects
+stk_ret_arch_test # Inference : Return Series is Heteroskedastic (Has Volatility Clustering)
+```
+
+**Objective:** To test for volatility clustering or heteroskedasticity
+in the arima residuals.
+
+**Analysis:** Conducted Box test and ARCH test on the squared residuals
+to assess the presence of volatility clustering.
+
+**Results:**
+
+1.  Box Test for Volatility Clustering:
+    -   X-squared statistic: 66.742
+    -   Degrees of freedom: 10
+    -   p-value: 1.879e-10 Thus, the test indicates significant evidence
+        against the null hypothesis, suggesting that the return variance
+        series exhibits volatility clustering or heteroskedasticity
+2.  ARCH Test for Volatility Clustering:
+    -   Chi-squared statistic: 5.3099
+    -   Degrees of freedom: 10
+    -   p-value: 0.8695 Thus, The ARCH test provides no significant
+        evidence against the null hypothesis. It confirms the presence
+        of no ARCH effects in the return series.
+
+**Implication:** The results from both tests suggest the variation and
+lacks the presence of volatility clustering or heteroskedasticity.
+Understanding and accounting for this pattern in volatility is essential
+for risk management and forecasting. Hence, we will remodel the
+residuals.
+
+```{r}
+stock_difret = na.omit(diff(stk_ret_sq))
+
+# Test for Volatility Clustering or Heteroskedasticity: ARCH Test
+stk_ret_arch_test1 = ArchTest(stock_difret, lags = 10) # H0: No ARCH Effects
+stk_ret_arch_test1 # Inference : Return Series is Heteroskedastic (Has Volatility Clustering)
+```
+
+**Implication:** The results from above test suggest the variation and
+the presence of volatility clustering or heteroskedasticity in the
+remodeled residual. Hence,we proceed with Residual modelling assuming
+Heteroskedasticity.
+
+```{r}
+# GARCH Model
+garch_model1 = ugarchspec(variance.model = list(model = 'sGARCH', garchOrder = c(1,1)), mean.model = list(armaOrder = c(0,0), include.mean = TRUE))
+nse_ret_garch1 = ugarchfit(garch_model1, data = stock_difret); nse_ret_garch1
+
+garch_model2 = ugarchspec(variance.model = list(model = 'sGARCH', garchOrder = c(1,1)), mean.model = list(armaOrder = c(1,5), include.mean = FALSE))
+nse_ret_garch2 = ugarchfit(garch_model2, data = stock_difret); nse_ret_garch2
+
+# Test for Volatility Clustering or Heteroskedasticity: ARCH Test
+gar_resd = residuals(nse_ret_garch2)^2
+stk_ret_arch_test1 = ArchTest(gar_resd, lags = 10) # H0: No ARCH Effects
+stk_ret_arch_test1 # Inference : Return Series is Heteroskedastic (Has Volatility Clustering)
+```
+
+**Objective:** The objective was to fit GARCH models to the residuals of
+the ARIMA(1, 1, 5) mean model and evaluate volatility clustering.
+
+**Analysis:** Two GARCH models ('garch_model1' and 'garch_model2') were
+fitted to the residuals, and an ARCH test was conducted on squared
+residuals to assess volatility clustering.
+
+**Results:**
+
+Model Comparison: garch_model2 (sGARCH(1,1) with ARFIMA(1,0,5) mean
+model) appears to be superior to garch_model1 (sGARCH(1,1) with
+ARFIMA(0,0,0) mean model) based on the following:
+
+Higher LogLikelihood: garch_model2 has a higher LogLikelihood value
+(5942.139) compared to garch_model1 (5757.262), indicating a better fit
+to the data.
+
+Lower Information Criteria: All information criteria (Akaike, Bayes,
+Shibata, Hannan-Quinn) are lower for garch_model2 compared to
+garch_model1, suggesting a better fit.
+
+Ljung-Box Tests: Both models exhibit significant serial correlation in
+the standardized residuals and squared residuals, as indicated by the
+p-values of the Ljung-Box tests.
+
+ARCH LM Tests: The ARCH LM test for garch_model2 yields a chi-squared
+statistic of 0.034814 with 10 degrees of freedom, resulting in a p-value
+of 1. This indicates no significant evidence of ARCH effects in
+garch_model2. Similarly, for garch_model1, the ARCH LM test did not show
+significant ARCH effects.
+
+Nyblom Stability Test: Both models pass the Nyblom stability test, with
+all individual statistics below the critical values.
+
+Adjusted Pearson Goodness-of-Fit Test: Both models exhibit a significant
+p-value for the test statistic, indicating poor goodness-of-fit.
+
+Therefore, considering the higher LogLikelihood, lower information
+criteria, and the absence of significant ARCH effects in both models,
+garch_model2 (sGARCH(1,1) with ARFIMA(1,0,5) mean model) can be
+considered a better fit for the data compared to garch_model1.
+
+Further analysis will be required to address the significant serial
+correlation observed in the standardized residuals and squared
+residuals.
+
+```{r}
+garch_modelf = ugarchspec(variance.model = list(model = 'sGARCH', garchOrder = c(1,1)), mean.model = list(armaOrder = c(1,5), include.mean = FALSE))
+stk_ret_garch = ugarchfit(garch_modelf, data = stock_ret); stk_ret_garch
+```
+
+**Objective:** The aim was to fit a GARCH model to the stock returns and
+evaluate its goodness-of-fit using the Adjusted Pearson Goodness-of-Fit
+Test.
+
+**Analysis:** Utilized the 'ugarchspec' and 'ugarchfit' functions to fit
+a GARCH model to the stock returns. The model employed was an
+sGARCH(1,1) with a mean model of ARFIMA(1,0,5). The Adjusted Pearson
+Goodness-of-Fit Test was conducted for different group sizes (20, 30,
+40, and 50), computing the test statistic and corresponding p-values.
+
+**Result:**
+
+GARCH Model: The fitted GARCH model is specified as sGARCH(1,1) with a
+mean model of ARFIMA(1,0,5). Optimal parameters for the model were
+estimated, with estimates and standard errors provided. Adjusted Pearson
+Goodness-of-Fit Test: The test was performed for various group sizes,
+and the resulting p-values were extremely low (e.g., 9.881e-17),
+indicating strong evidence against the null hypothesis of a good fit.
+Implications:
+
+The Adjusted Pearson Goodness-of-Fit Test suggests that the fitted GARCH
+model may not adequately capture the characteristics of the observed
+daily returns of the asset. However, several considerations should be
+taken into account:
+
+Sample Size Sensitivity: The test's sensitivity to sample size can lead
+to low p-values even with minor deviations from the expected
+distribution.
+
+Additional Diagnostic Tests: Other diagnostic tests, such as the
+Weighted Ljung-Box Test on Standardized Residuals and Weighted ARCH LM
+Tests, do not indicate significant serial correlation or ARCH effects,
+suggesting that the model adequately addresses these aspects.
+
+Interpretation Context: Interpretation should be contextualized within
+the specific characteristics of the asset and the underlying assumptions
+of the GARCH modeling framework. Conclusion:
+
+**Actionable points**: While the Adjusted Pearson Goodness-of-Fit Test
+raises concerns about the model's fit to the observed data, additional
+analysis and consideration of alternative diagnostic tests are warranted
+to make a comprehensive assessment of the model's adequacy. Further
+investigation into model specification and potential sources of
+discrepancy may be necessary for a more robust evaluation.
+
+```{r}
+# GARCH Forecast
+stk_ret_garch_forecast1 = ugarchforecast(stk_ret_garch, n.ahead = 100); stk_ret_garch_forecast1
+```
+
+**Objective:** To forecast volatility using the fitted GARCH model for
+the next 100 time points. Analysis: Used the 'ugarchforecast' function
+to generate volatility forecasts for the next 100 time points.
+
+**Result:** GARCH Model Forecast: - Model: sGARCH - Horizon: 100 - Roll
+Steps: 0 - Out of Sample: 0 0-roll forecast [T0=2022-03-30]: -
+Forecasted Series: - T+1 to T+100: Contains forecasted values of
+volatility (Sigma) for each time point.
+
+**Implication:** The forecasted values represent the predicted
+volatility for the next 100 time points based on the fitted GARCH model.
+These forecasts can be useful for risk management and decision-making,
+providing insights into the expected future volatility of the financial
+time series.
+
+```{r}
+plot(stk_ret_garch_forecast1)
+```
+
